@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Map View — CivicPulse{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  .map-layout { display: grid; grid-template-columns: 340px 1fr; height: calc(100vh - 60px); }
+
+  .map-sidebar {
+    background: var(--card); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .map-sidebar-header {
+    padding: 18px 20px; border-bottom: 1px solid var(--border);
+    background: var(--ink); color: #fff;
+  }
+  .map-sidebar-title { font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; }
+  .map-sidebar-sub { font-size: 0.78rem; color: #999; margin-top: 2px; }
+
+  .map-filters { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px; }
+  .mf-btn {
+    padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600;
+    border: 1.5px solid var(--border); background: var(--paper); cursor: pointer; transition: all 0.15s;
+  }
+  .mf-btn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  .map-list { flex: 1; overflow-y: auto; }
+  .map-item {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: background 0.15s;
+    border-left: 3px solid transparent;
+  }
+  .map-item:hover, .map-item.selected { background: #fdf9f8; border-left-color: var(--accent); }
+  .map-item-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 4px; }
+  .map-item-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .map-item-loc { font-size: 0.75rem; color: var(--muted); margin-top: 3px; }
+
+  #map { flex: 1; }
+
+  /* Leaflet popup override */
+  .leaflet-popup-content-wrapper {
+    border-radius: 10px !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important;
+    font-family: var(--font-body) !important;
+  }
+  .popup-title { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; }
+  .popup-desc { font-size: 0.8rem; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
+  .popup-btn {
+    display: inline-block; padding: 5px 14px; background: var(--accent); color: #fff;
+    border-radius: 5px; font-size: 0.78rem; text-decoration: none; cursor: pointer;
+  }
+
+  @media (max-width: 768px) {
+    .map-layout { grid-template-columns: 1fr; grid-template-rows: 40vh 60vh; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="map-layout">
+  <!-- SIDEBAR -->
+  <div class="map-sidebar">
+    <div class="map-sidebar-header">
+      <div class="map-sidebar-title"><i class="fas fa-map-marked-alt"></i> Issue Map</div>
+      <div class="map-sidebar-sub" id="map-count">Loading reports...</div>
+    </div>
+    <div class="map-filters">
+      <button class="mf-btn active" data-cat="all" onclick="setMapFilter(this)">All</button>
+      <button class="mf-btn" data-cat="roads" onclick="setMapFilter(this)">Roads</button>
+      <button class="mf-btn" data-cat="lighting" onclick="setMapFilter(this)">Lighting</button>
+      <button class="mf-btn" data-cat="sanitation" onclick="setMapFilter(this)">Sanitation</button>
+      <button class="mf-btn" data-cat="flooding" onclick="setMapFilter(this)">Flooding</button>
+      <button class="mf-btn" data-cat="parks" onclick="setMapFilter(this)">Parks</button>
+    </div>
+    <div class="map-list" id="map-list"></div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const catColors = { roads:'#7c3aed', lighting:'#d97706', sanitation:'#059669', flooding:'#2563eb', parks:'#16a34a', vandalism:'#dc2626', other:'#6b7280' };
+const priorityColors = { low:'#6b7280', medium:'#d97706', high:'#dc2626', critical:'#7c2222' };
+
+// Init Leaflet map
+const map = L.map('map').setView([40.7128, -74.0060], 14);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
+}).addTo(map);
+
+let markers = [];
+let allReports = [];
+let selectedCat = 'all';
+
+function createIcon(report) {
+  const color = priorityColors[report.priority] || '#888';
+  const size = report.priority === 'critical' ? 14 : 11;
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
+    iconSize: [size, size], iconAnchor: [size/2, size/2]
+  });
+}
+
+function clearMarkers() { markers.forEach(m => map.removeLayer(m)); markers = []; }
+
+function renderMap(reports) {
+  clearMarkers();
+  const filtered = selectedCat === 'all' ? reports : reports.filter(r => r.category === selectedCat);
+  document.getElementById('map-count').textContent = `${filtered.length} issue${filtered.length !== 1 ? 's' : ''} shown`;
+
+  const list = document.getElementById('map-list');
+  list.innerHTML = filtered.map(r => `
+    <div class="map-item" id="mi-${r.id}" onclick="focusReport(${r.id})">
+      <div class="map-item-title">${r.title}</div>
+      <div class="map-item-row">
+        <span class="badge badge-${r.status}">${r.status.replace('_',' ')}</span>
+        <span class="badge badge-${r.priority}">${r.priority}</span>
+      </div>
+      ${r.location ? `<div class="map-item-loc"><i class="fas fa-map-pin"></i> ${r.location}</div>` : ''}
+    </div>`).join('') || '<div style="padding:2rem;color:var(--muted);text-align:center">No reports in this category</div>';
+
+  filtered.forEach(r => {
+    if (!r.latitude || !r.longitude) return;
+    const m = L.marker([r.latitude, r.longitude], { icon: createIcon(r) })
+      .addTo(map)
+      .bindPopup(`
+        <div style="min-width:220px">
+          <div class="popup-title">${r.title}</div>
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <span class="badge badge-${r.status}">${r.status.replace('_',' ')}</span>
+            <span class="badge badge-${r.priority}">${r.priority}</span>
+          </div>
+          <div class="popup-desc">${r.description.slice(0,100)}...</div>
+          ${r.location ? `<div style="font-size:0.75rem;color:#999;margin-bottom:10px"><i class="fas fa-map-pin"></i> ${r.location}</div>` : ''}
+          <div style="font-size:0.75rem;color:#999;margin-bottom:10px"><i class="fas fa-arrow-up"></i> ${r.vote_count} votes</div>
+          <a href="/dashboard?report=${r.id}" class="popup-btn">View Details</a>
+        </div>`);
+    markers.push(m);
+  });
+}
+
+function focusReport(id) {
+  document.querySelectorAll('.map-item').forEach(el => el.classList.remove('selected'));
+  const el = document.getElementById(`mi-${id}`);
+  if (el) { el.classList.add('selected'); el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  const r = allReports.find(r => r.id === id);
+  if (r && r.latitude && r.longitude) {
+    map.flyTo([r.latitude, r.longitude], 16, { duration: 1 });
+    markers.find(m => {
+      const ll = m.getLatLng();
+      return ll.lat === r.latitude && ll.lng === r.longitude;
+    })?.openPopup();
+  }
+}
+
+function setMapFilter(btn) {
+  document.querySelectorAll('.mf-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedCat = btn.dataset.cat;
+  renderMap(allReports);
+}
+
+async function init() {
+  const d = await api('/api/reports');
+  allReports = d.reports;
+  renderMap(allReports);
+
+  // Add legend
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = () => {
+    const div = L.DomUtil.create('div');
+    div.style.cssText = 'background:white;padding:12px 16px;border-radius:8px;font-size:0.75rem;box-shadow:0 2px 10px rgba(0,0,0,0.1);font-family:DM Sans,sans-serif';
+    div.innerHTML = '<strong style="display:block;margin-bottom:8px">Priority</strong>' +
+      Object.entries(priorityColors).map(([k,v]) =>
+        `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="width:10px;height:10px;border-radius:50%;background:${v}"></div>${k.charAt(0).toUpperCase()+k.slice(1)}</div>`
+      ).join('');
+    return div;
+  };
+  legend.addTo(map);
+}
+
+init();
+</script>
+{% endblock %}

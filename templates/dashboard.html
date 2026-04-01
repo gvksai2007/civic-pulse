@@ -1,0 +1,548 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — CivicPulse{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  .page-layout { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 60px); }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    background: var(--ink); color: #fff;
+    padding: 2rem 1.5rem; border-right: 1px solid rgba(255,255,255,0.05);
+    position: sticky; top: 60px; height: calc(100vh - 60px); overflow-y: auto;
+  }
+  .sidebar-section { margin-bottom: 2rem; }
+  .sidebar-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #666; margin-bottom: 10px; }
+  .sidebar-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 6px; cursor: pointer;
+    font-size: 0.85rem; color: #bbb; background: none; border: none; width: 100%; text-align: left;
+    transition: all 0.15s;
+  }
+  .sidebar-btn:hover, .sidebar-btn.active { background: rgba(255,255,255,0.08); color: #fff; }
+  .sidebar-btn i { width: 16px; text-align: center; }
+  .sidebar-btn .count { margin-left: auto; background: rgba(255,255,255,0.1); padding: 1px 7px; border-radius: 10px; font-size: 0.7rem; }
+  .sidebar-btn.active .count { background: var(--accent); }
+
+  /* ── MAIN ── */
+  .main-content { padding: 2rem; background: var(--paper); }
+
+  .dash-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px;
+  }
+  .dash-title { font-family: var(--font-display); font-size: 1.5rem; font-weight: 800; }
+
+  .dash-controls { display: flex; gap: 8px; align-items: center; }
+  .dash-controls select {
+    padding: 7px 12px; border-radius: 6px; border: 1.5px solid var(--border);
+    font-size: 0.82rem; background: var(--card); font-family: var(--font-body);
+  }
+  .search-box {
+    padding: 7px 14px; border-radius: 6px; border: 1.5px solid var(--border);
+    font-size: 0.82rem; background: var(--card); font-family: var(--font-body);
+    width: 220px;
+  }
+  .search-box:focus { outline: none; border-color: var(--accent); }
+
+  /* ── STAT CARDS ── */
+  .stat-cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 2rem; }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px;
+    border-top: 4px solid transparent;
+  }
+  .stat-card.open { border-top-color: #f59e0b; }
+  .stat-card.progress { border-top-color: #3b82f6; }
+  .stat-card.resolved { border-top-color: var(--green); }
+  .stat-card.total { border-top-color: var(--accent); }
+  .stat-card-num { font-family: var(--font-display); font-size: 2rem; font-weight: 800; }
+  .stat-card-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* ── REPORT LIST ── */
+  .report-list { display: flex; flex-direction: column; gap: 12px; }
+  .report-row {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px;
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 12px; cursor: pointer;
+    transition: all 0.15s; border-left: 4px solid transparent;
+  }
+  .report-row:hover { border-left-color: var(--accent); box-shadow: 0 4px 16px rgba(0,0,0,0.07); }
+  .rr-title { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; margin-bottom: 5px; }
+  .rr-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .rr-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .rr-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 90px; }
+  .vote-btn {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 8px 16px; border-radius: 8px; border: 1.5px solid var(--border);
+    background: var(--paper); cursor: pointer; transition: all 0.15s;
+    font-family: var(--font-display); font-weight: 700; font-size: 0.9rem;
+  }
+  .vote-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .vote-btn.voted { border-color: var(--accent); color: var(--accent); background: #fff2f1; }
+  .vote-btn i { font-size: 0.75rem; }
+  .rr-comments { font-size: 0.75rem; color: var(--muted); }
+
+  /* ── DETAIL PANEL ── */
+  .detail-panel {
+    position: fixed; right: 0; top: 60px; bottom: 0;
+    width: 460px; background: var(--card);
+    border-left: 1px solid var(--border); z-index: 50;
+    transform: translateX(100%); transition: transform 0.3s;
+    overflow-y: auto; display: flex; flex-direction: column;
+  }
+  .detail-panel.open { transform: translateX(0); box-shadow: -10px 0 30px rgba(0,0,0,0.1); }
+  .dp-header { padding: 20px 24px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--card); z-index: 1; }
+  .dp-close { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 1rem; float: right; }
+  .dp-body { padding: 24px; flex: 1; }
+  .dp-title { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; margin-bottom: 12px; line-height: 1.3; }
+  .dp-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .dp-desc { font-size: 0.9rem; color: var(--muted); line-height: 1.7; margin-bottom: 20px; }
+  .dp-section-title { font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 10px; margin-top: 20px; }
+  .dp-info-row { display: flex; gap: 12px; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; align-items: center; }
+  .dp-info-row i { width: 16px; color: var(--accent); }
+
+  /* Comments */
+  .comment-box { background: var(--paper); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+  .comment-author { font-weight: 700; font-size: 0.8rem; margin-bottom: 4px; }
+  .comment-text { font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
+  .comment-time { font-size: 0.72rem; color: #aaa; margin-top: 4px; }
+
+  .comment-input-area { padding: 16px 24px; border-top: 1px solid var(--border); background: var(--card); position: sticky; bottom: 0; }
+  .comment-input-row { display: flex; gap: 8px; }
+  .comment-input-row input { flex: 1; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 6px; font-family: var(--font-body); font-size: 0.85rem; }
+  .comment-input-row input:focus { outline: none; border-color: var(--accent); }
+
+  /* Submit report modal */
+  .form-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  @media (max-width: 900px) {
+    .page-layout { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .stat-cards { grid-template-columns: 1fr 1fr; }
+    .detail-panel { width: 100%; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Status</div>
+      <button class="sidebar-btn active" data-filter="status" data-val="all" onclick="setSidebarFilter(this)">
+        <i class="fas fa-th-large"></i> All Reports <span class="count" id="cnt-all">0</span>
+      </button>
+      <button class="sidebar-btn" data-filter="status" data-val="open" onclick="setSidebarFilter(this)">
+        <i class="fas fa-circle-dot"></i> Open <span class="count" id="cnt-open">0</span>
+      </button>
+      <button class="sidebar-btn" data-filter="status" data-val="in_progress" onclick="setSidebarFilter(this)">
+        <i class="fas fa-spinner"></i> In Progress <span class="count" id="cnt-prog">0</span>
+      </button>
+      <button class="sidebar-btn" data-filter="status" data-val="resolved" onclick="setSidebarFilter(this)">
+        <i class="fas fa-check-circle"></i> Resolved <span class="count" id="cnt-res">0</span>
+      </button>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Category</div>
+      <button class="sidebar-btn" data-filter="category" data-val="roads" onclick="setSidebarFilter(this)"><i class="fas fa-road cat-roads"></i> Roads</button>
+      <button class="sidebar-btn" data-filter="category" data-val="lighting" onclick="setSidebarFilter(this)"><i class="fas fa-lightbulb cat-lighting"></i> Lighting</button>
+      <button class="sidebar-btn" data-filter="category" data-val="sanitation" onclick="setSidebarFilter(this)"><i class="fas fa-trash cat-sanitation"></i> Sanitation</button>
+      <button class="sidebar-btn" data-filter="category" data-val="flooding" onclick="setSidebarFilter(this)"><i class="fas fa-water cat-flooding"></i> Flooding</button>
+      <button class="sidebar-btn" data-filter="category" data-val="parks" onclick="setSidebarFilter(this)"><i class="fas fa-tree cat-parks"></i> Parks</button>
+      <button class="sidebar-btn" data-filter="category" data-val="vandalism" onclick="setSidebarFilter(this)"><i class="fas fa-spray-can cat-vandalism"></i> Vandalism</button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main-content">
+    <div class="dash-header">
+      <div class="dash-title">Community Reports</div>
+      <div class="dash-controls">
+        <input type="text" class="search-box" placeholder="🔍 Search reports..." id="search-input" oninput="filterReports()">
+        <select id="sort-select" onchange="loadReports()">
+          <option value="newest">Newest First</option>
+          <option value="votes">Most Votes</option>
+          <option value="oldest">Oldest First</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="openSubmitModal()"><i class="fas fa-plus"></i> Report Issue</button>
+      </div>
+    </div>
+
+    <!-- STAT CARDS -->
+    <div class="stat-cards">
+      <div class="stat-card total"><div class="stat-card-num" id="ds-total">0</div><div class="stat-card-label">Total</div></div>
+      <div class="stat-card open"><div class="stat-card-num" id="ds-open">0</div><div class="stat-card-label">Open</div></div>
+      <div class="stat-card progress"><div class="stat-card-num" id="ds-prog">0</div><div class="stat-card-label">In Progress</div></div>
+      <div class="stat-card resolved"><div class="stat-card-num" id="ds-res">0</div><div class="stat-card-label">Resolved</div></div>
+    </div>
+
+    <div class="report-list" id="report-list">
+      <div style="text-align:center;padding:3rem;color:var(--muted)"><i class="fas fa-spinner fa-spin fa-2x"></i></div>
+    </div>
+  </main>
+</div>
+
+<!-- DETAIL PANEL -->
+<div class="detail-panel" id="detail-panel">
+  <div class="dp-header">
+    <button class="dp-close" onclick="closeDetail()"><i class="fas fa-times"></i> Close</button>
+    <div id="dp-badges" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"></div>
+  </div>
+  <div class="dp-body" id="dp-body"></div>
+  <div class="comment-input-area">
+    <div class="dp-section-title">Add Comment</div>
+    <div class="comment-input-row">
+      <input type="text" id="comment-text" placeholder="Share an update..." />
+      <button class="btn btn-primary btn-sm" onclick="submitComment()">Post</button>
+    </div>
+  </div>
+</div>
+
+<!-- SUBMIT REPORT MODAL -->
+<div class="modal-overlay" id="submit-modal">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-header">
+      <h3><i class="fas fa-exclamation-triangle" style="color:var(--accent)"></i> Report a Civic Issue</h3>
+      <button class="modal-close" onclick="closeModal('submit-modal')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Title *</label>
+        <input type="text" id="r-title" placeholder="Brief description of the issue">
+      </div>
+      <div class="form-two-col">
+        <div class="form-group">
+          <label>Category *</label>
+          <select id="r-category">
+            <option value="roads">🛣 Roads & Potholes</option>
+            <option value="lighting">💡 Street Lighting</option>
+            <option value="sanitation">🗑 Sanitation</option>
+            <option value="flooding">🌊 Flooding & Drainage</option>
+            <option value="parks">🌳 Parks & Recreation</option>
+            <option value="vandalism">🎨 Vandalism</option>
+            <option value="other">❓ Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Priority *</label>
+          <select id="r-priority">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Description *</label>
+        <textarea id="r-desc" placeholder="Describe the issue in detail. Include how long it's been there, safety concerns, etc."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Location <span style="color:var(--muted);font-weight:400;text-transform:none">(type or click map to pin)</span></label>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input type="text" id="r-location" placeholder="Street address or landmark" style="flex:1">
+          <button type="button" class="btn btn-dark btn-sm" onclick="locateMeDash()" title="Use my location">
+            <i class="fas fa-location-crosshairs"></i>
+          </button>
+        </div>
+        <div id="r-map-picker" style="height:200px;border-radius:8px;border:1.5px solid var(--border);overflow:hidden;cursor:crosshair"></div>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:5px"><i class="fas fa-info-circle"></i> Click anywhere on the map to drop a pin</p>
+        <input type="hidden" id="r-lat">
+        <input type="hidden" id="r-lng">
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="submitReport()"><i class="fas fa-paper-plane"></i> Submit Report</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+
+// ── Dashboard Map Picker ──────────────────────────────────────────────────────
+function initDashMapPicker() {
+  const container = document.getElementById('r-map-picker');
+  if (!container || container._leaflet_id) return;
+
+  const m = L.map('r-map-picker', { zoomControl: true }).setView([20.5937, 78.9629], 5);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 19
+  }).addTo(m);
+
+  let marker = null;
+  m.on('click', async (e) => {
+    const { lat, lng } = e.latlng;
+    document.getElementById('r-lat').value = lat.toFixed(6);
+    document.getElementById('r-lng').value = lng.toFixed(6);
+    if (marker) m.removeLayer(marker);
+    marker = L.marker([lat, lng], {
+      icon: L.divIcon({
+        className: '',
+        html: `<div style="width:18px;height:18px;border-radius:50%;background:#e84033;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
+        iconSize: [18,18], iconAnchor: [9,9]
+      })
+    }).addTo(m);
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+      const data = await r.json();
+      const addr = data.display_name?.split(',').slice(0,3).join(', ') || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      document.getElementById('r-location').value = addr;
+    } catch {
+      document.getElementById('r-location').value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    }
+  });
+  container._mapInstance = m;
+}
+
+function locateMeDash() {
+  if (!navigator.geolocation) { showToast('Geolocation not supported', 'error'); return; }
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    const container = document.getElementById('r-map-picker');
+    const m = container?._mapInstance;
+    if (m) {
+      m.setView([lat, lng], 16);
+      m.fire('click', { latlng: { lat, lng } });
+    }
+  }, () => showToast('Could not get your location', 'error'));
+}
+
+// Init map when submit modal opens
+const _dashOrigOpen = window.openModal;
+window.openModal = function(id) {
+  _dashOrigOpen(id);
+  if (id === 'submit-modal') {
+    setTimeout(() => {
+      initDashMapPicker();
+      const m = document.getElementById('r-map-picker')?._mapInstance;
+      if (m) m.invalidateSize();
+    }, 150);
+  }
+};
+
+// ── Rest of dashboard JS ──────────────────────────────────────────────────────
+let allReports = [];
+let activeFilters = { status: 'all', category: null };
+let currentDetailId = null;
+
+function setSidebarFilter(btn) {
+  const filter = btn.dataset.filter;
+  const val = btn.dataset.val;
+  document.querySelectorAll(`.sidebar-btn[data-filter="${filter}"]`).forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (filter === 'status') activeFilters.status = val;
+  else { activeFilters.category = val; }
+  loadReports();
+}
+
+function openSubmitModal() {
+  if (!currentUser) { showToast('Please login to submit a report', 'error'); openModal('login-modal'); return; }
+  openModal('submit-modal');
+}
+
+async function loadStats() {
+  const d = await api('/api/stats');
+  document.getElementById('ds-total').textContent = d.total;
+  document.getElementById('ds-open').textContent = d.open;
+  document.getElementById('ds-prog').textContent = d.in_progress;
+  document.getElementById('ds-res').textContent = d.resolved;
+  document.getElementById('cnt-all').textContent = d.total;
+  document.getElementById('cnt-open').textContent = d.open;
+  document.getElementById('cnt-prog').textContent = d.in_progress;
+  document.getElementById('cnt-res').textContent = d.resolved;
+}
+
+async function loadReports() {
+  const sort = document.getElementById('sort-select').value;
+  let url = `/api/reports?sort=${sort}`;
+  if (activeFilters.status && activeFilters.status !== 'all') url += `&status=${activeFilters.status}`;
+  if (activeFilters.category) url += `&category=${activeFilters.category}`;
+  const d = await api(url);
+  allReports = d.reports;
+  filterReports();
+}
+
+function filterReports() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  const filtered = q ? allReports.filter(r => r.title.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)) : allReports;
+  renderReports(filtered);
+}
+
+function renderReports(reports) {
+  const list = document.getElementById('report-list');
+  if (!reports.length) {
+    list.innerHTML = '<div style="text-align:center;padding:3rem;color:var(--muted)"><i class="fas fa-inbox fa-3x" style="margin-bottom:12px;display:block"></i>No reports found</div>';
+    return;
+  }
+  list.innerHTML = reports.map(r => `
+    <div class="report-row" onclick="openDetail(${r.id})">
+      <div>
+        <div class="rr-title">${r.title}</div>
+        <div class="rr-meta">
+          <span class="badge badge-${r.status}">${r.status.replace('_',' ')}</span>
+          <span class="badge badge-${r.priority}">${r.priority}</span>
+          <span class="badge" style="background:#f3f4f6;color:#374151"><i class="fas fa-tag" style="margin-right:4px"></i>${r.category}</span>
+          ${r.location ? `<span style="font-size:0.75rem;color:var(--muted)"><i class="fas fa-map-pin"></i> ${r.location}</span>` : ''}
+        </div>
+        <div class="rr-desc">${r.description}</div>
+        <div style="font-size:0.72rem;color:#bbb;margin-top:6px">By ${r.author} · ${r.created_at} · <i class="fas fa-comment"></i> ${r.comment_count}</div>
+      </div>
+      <div class="rr-right">
+        <button class="vote-btn ${r.userVoted ? 'voted':''}" onclick="event.stopPropagation();toggleVote(${r.id}, this)">
+          <i class="fas fa-arrow-up"></i>
+          <span>${r.vote_count}</span>
+        </button>
+      </div>
+    </div>`).join('');
+}
+
+async function toggleVote(id, btn) {
+  if (!currentUser) { showToast('Login to upvote', 'error'); openModal('login-modal'); return; }
+  const d = await api(`/api/reports/${id}/vote`, 'POST');
+  if (d.error) { showToast(d.error, 'error'); return; }
+  btn.querySelector('span').textContent = d.vote_count;
+  btn.classList.toggle('voted', d.voted);
+  showToast(d.voted ? '👍 Upvoted!' : 'Vote removed');
+}
+
+async function openDetail(id) {
+  currentDetailId = id;
+  const d = await api(`/api/reports/${id}`);
+  const r = d.report;
+
+  document.getElementById('dp-badges').innerHTML = `
+    <span class="badge badge-${r.status}">${r.status.replace('_',' ')}</span>
+    <span class="badge badge-${r.priority}">${r.priority}</span>
+    <span class="badge" style="background:#f3f4f6;color:#374151">${r.category}</span>`;
+
+  const isOwner = currentUser && currentUser.username === r.author;
+
+  // Status button styles
+  const statusBtns = [
+    { val: 'open',        label: '🔴 Open',        bg: '#fef3c7', color: '#d97706', border: '#f59e0b' },
+    { val: 'in_progress', label: '🔵 In Progress',  bg: '#dbeafe', color: '#1d4ed8', border: '#3b82f6' },
+    { val: 'resolved',    label: '🟢 Resolved',     bg: '#d1fae5', color: '#065f46', border: '#10b981' },
+  ];
+
+  document.getElementById('dp-body').innerHTML = `
+    <div class="dp-title">${r.title}</div>
+    <div class="dp-section-title">Description</div>
+    <div class="dp-desc">${r.description}</div>
+    <div class="dp-info-row"><i class="fas fa-user"></i> Reported by <strong>${r.author}</strong></div>
+    ${r.location ? `<div class="dp-info-row"><i class="fas fa-map-pin"></i> ${r.location}</div>` : ''}
+    <div class="dp-info-row"><i class="fas fa-clock"></i> ${r.created_at}</div>
+    <div class="dp-info-row"><i class="fas fa-arrow-up"></i> ${r.vote_count} community upvotes</div>
+
+    <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="toggleVoteDetail(${r.id})">
+        <i class="fas fa-arrow-up"></i> Upvote
+      </button>
+    </div>
+
+    ${isOwner ? `
+    <div style="margin-top:20px;padding:14px;background:#f9f7f4;border-radius:8px;border:1.5px solid var(--border)">
+      <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:10px">
+        <i class="fas fa-sliders"></i> Update Status <span style="font-weight:400;color:#aaa">(you are the reporter)</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${statusBtns.map(s => `
+          <button onclick="updateStatus(${r.id}, '${s.val}')"
+            style="padding:7px 14px;border-radius:6px;font-size:0.82rem;font-weight:700;cursor:pointer;
+                   border:2px solid ${s.border};background:${r.status===s.val ? s.border : s.bg};
+                   color:${r.status===s.val ? '#fff' : s.color};transition:all 0.15s">
+            ${s.label} ${r.status===s.val ? '✓' : ''}
+          </button>`).join('')}
+      </div>
+    </div>` : `
+    <div style="margin-top:14px;font-size:0.78rem;color:var(--muted);font-style:italic">
+      <i class="fas fa-info-circle"></i> Only the reporter can update the status.
+    </div>`}
+
+    <div class="dp-section-title" style="margin-top:24px">Comments (${r.comments.length})</div>
+    <div id="comments-container">
+      ${r.comments.length ? r.comments.map(c => `
+        <div class="comment-box">
+          <div class="comment-author">${c.author}</div>
+          <div class="comment-text">${c.content}</div>
+          <div class="comment-time">${c.created_at}</div>
+        </div>`).join('') : '<p style="color:var(--muted);font-size:0.85rem">No comments yet. Be the first!</p>'}
+    </div>`;
+
+  document.getElementById('detail-panel').classList.add('open');
+
+  // Check URL param
+  if (window.location.search.includes('report=')) {
+    history.pushState({}, '', '/dashboard');
+  }
+}
+
+async function toggleVoteDetail(id) {
+  if (!currentUser) { showToast('Login to upvote', 'error'); openModal('login-modal'); return; }
+  await api(`/api/reports/${id}/vote`, 'POST');
+  openDetail(id);
+}
+
+async function updateStatus(id, newStatus) {
+  const d = await api(`/api/reports/${id}/status`, 'PATCH', { status: newStatus });
+  if (d.error) { showToast(d.error, 'error'); return; }
+  const labels = { open: '🔴 Marked as Open', in_progress: '🔵 Marked as In Progress', resolved: '🟢 Marked as Resolved!' };
+  showToast(labels[newStatus] || 'Status updated');
+  openDetail(id);      // refresh detail panel
+  loadReports();       // refresh list
+  loadStats();         // refresh stat cards
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+  currentDetailId = null;
+}
+
+async function submitComment() {
+  if (!currentUser) { showToast('Login to comment', 'error'); return; }
+  const content = document.getElementById('comment-text').value.trim();
+  if (!content) return;
+  const d = await api(`/api/reports/${currentDetailId}/comment`, 'POST', { content });
+  if (d.error) { showToast(d.error, 'error'); return; }
+  document.getElementById('comment-text').value = '';
+  showToast('Comment posted!');
+  openDetail(currentDetailId);
+}
+
+async function submitReport() {
+  const title = document.getElementById('r-title').value.trim();
+  const description = document.getElementById('r-desc').value.trim();
+  const category = document.getElementById('r-category').value;
+  const priority = document.getElementById('r-priority').value;
+  const location = document.getElementById('r-location').value.trim();
+  const latitude  = parseFloat(document.getElementById('r-lat').value) || null;
+  const longitude = parseFloat(document.getElementById('r-lng').value) || null;
+  if (!title || !description) { showToast('Title and description are required', 'error'); return; }
+  const d = await api('/api/reports', 'POST', { title, description, category, priority, location, latitude, longitude });
+  if (d.error) { showToast(d.error, 'error'); return; }
+  closeModal('submit-modal');
+  showToast('✅ Report submitted!');
+  loadReports(); loadStats();
+  // Clear form + map
+  ['r-title','r-desc','r-location','r-lat','r-lng'].forEach(id => document.getElementById(id).value = '');
+  const m = document.getElementById('r-map-picker')?._mapInstance;
+  if (m) { m.eachLayer(l => { if (l instanceof L.Marker) m.removeLayer(l); }); }
+}
+
+// Check for report param in URL
+const urlParams = new URLSearchParams(window.location.search);
+const reportParam = urlParams.get('report');
+if (reportParam) setTimeout(() => openDetail(parseInt(reportParam)), 500);
+
+window.onAuthChange = () => { loadReports(); };
+
+loadStats();
+loadReports();
+</script>
+{% endblock %}
