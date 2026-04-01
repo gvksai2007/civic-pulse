@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+ 
     :root {
       --ink: #0a0a0f;
       --paper: #f5f3ee;
@@ -23,16 +23,16 @@
       --font-display: 'Syne', sans-serif;
       --font-body: 'DM Sans', sans-serif;
     }
-
+ 
     html { scroll-behavior: smooth; }
-
+ 
     body {
       font-family: var(--font-body);
       background: var(--paper);
       color: var(--ink);
       min-height: 100vh;
     }
-
+ 
     /* ── NAV ── */
     nav {
       position: sticky; top: 0; z-index: 100;
@@ -42,7 +42,7 @@
       height: 60px;
       border-bottom: 3px solid var(--accent);
     }
-
+ 
     .nav-brand {
       font-family: var(--font-display);
       font-size: 1.3rem; font-weight: 800;
@@ -51,7 +51,7 @@
       display: flex; align-items: center; gap: 8px;
     }
     .nav-brand span { color: var(--accent); }
-
+ 
     .nav-links {
       display: flex; align-items: center; gap: 0.25rem;
     }
@@ -62,9 +62,9 @@
       transition: all 0.15s;
     }
     .nav-links a:hover, .nav-links a.active { color: #fff; background: rgba(255,255,255,0.1); }
-
+ 
     .nav-actions { display: flex; align-items: center; gap: 8px; }
-
+ 
     .btn {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 8px 18px; border-radius: 6px;
@@ -80,10 +80,10 @@
     .btn-dark:hover { background: #1a1a2e; }
     .btn-green { background: var(--green); color: #fff; }
     .btn-sm { padding: 5px 12px; font-size: 0.78rem; }
-
+ 
     /* ── FLASH ── */
     .flash { padding: 12px 20px; font-size: 0.875rem; border-left: 4px solid var(--accent); background: #fff3f2; color: #c73028; }
-
+ 
     /* ── BADGE ── */
     .badge {
       display: inline-block; padding: 2px 8px; border-radius: 3px;
@@ -96,7 +96,7 @@
     .badge-medium { background: #fef3c7; color: #d97706; }
     .badge-high { background: #fee2e2; color: #dc2626; }
     .badge-critical { background: #dc2626; color: #fff; }
-
+ 
     /* ── CATEGORY COLORS ── */
     .cat-roads { color: #7c3aed; }
     .cat-lighting { color: #d97706; }
@@ -105,7 +105,7 @@
     .cat-flooding { color: #2563eb; }
     .cat-parks { color: #16a34a; }
     .cat-other { color: #6b7280; }
-
+ 
     /* ── MODAL ── */
     .modal-overlay {
       position: fixed; inset: 0; z-index: 1000;
@@ -129,7 +129,7 @@
     .modal-body { padding: 24px; }
     .modal-close { background: none; border: none; cursor: pointer; font-size: 1.1rem; color: var(--muted); }
     .modal-close:hover { color: var(--ink); }
-
+ 
     /* ── FORM ── */
     .form-group { margin-bottom: 16px; }
     .form-group label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -143,7 +143,7 @@
     }
     .form-group textarea { resize: vertical; min-height: 90px; }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
+ 
     /* ── TOAST ── */
     #toast {
       position: fixed; bottom: 24px; right: 24px; z-index: 9999;
@@ -156,7 +156,7 @@
     }
     #toast.show { transform: translateY(0); opacity: 1; }
     #toast.error { border-color: var(--accent); }
-
+ 
     footer {
       background: var(--ink); color: #ccc;
       text-align: center; padding: 20px;
@@ -168,7 +168,7 @@
   {% block head %}{% endblock %}
 </head>
 <body>
-
+ 
 <nav>
   <a href="/" class="nav-brand"><i class="fas fa-broadcast-tower"></i>Civic<span>Pulse</span></a>
   <div class="nav-links">
@@ -181,13 +181,13 @@
     <button class="btn btn-primary btn-sm" onclick="openModal('register-modal')">Sign Up</button>
   </div>
 </nav>
-
+ 
 {% block content %}{% endblock %}
-
+ 
 <footer>
   <p>Built with ❤️ for communities &mdash; <span>CivicPulse</span> &copy; 2024</p>
 </footer>
-
+ 
 <!-- Login Modal -->
 <div class="modal-overlay" id="login-modal">
   <div class="modal">
@@ -211,7 +211,7 @@
     </div>
   </div>
 </div>
-
+ 
 <!-- Register Modal -->
 <div class="modal-overlay" id="register-modal">
   <div class="modal">
@@ -239,9 +239,9 @@
     </div>
   </div>
 </div>
-
+ 
 <div id="toast"></div>
-
+ 
 <script>
 // ── Modal helpers ──
 function openModal(id) { document.getElementById(id).classList.add('open'); }
@@ -250,7 +250,7 @@ function switchModal(from, to) { closeModal(from); openModal(to); }
 document.querySelectorAll('.modal-overlay').forEach(o => {
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
 });
-
+ 
 // ── Toast ──
 function showToast(msg, type='success') {
   const t = document.getElementById('toast');
@@ -258,24 +258,24 @@ function showToast(msg, type='success') {
   t.className = type === 'error' ? 'error show' : 'show';
   setTimeout(() => t.className = '', 3000);
 }
-
+ 
 // ── API helper ──
 async function api(path, method='GET', body=null) {
-  const opts = { method, headers: {'Content-Type':'application/json'} };
+  const opts = { method, credentials: 'include', headers: {'Content-Type':'application/json'} };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(path, opts);
   return r.json();
 }
-
+ 
 // ── Auth ──
 let currentUser = null;
-
+ 
 async function loadUser() {
   const d = await api('/api/me');
   currentUser = d.user;
   renderNavActions();
 }
-
+ 
 function renderNavActions() {
   const el = document.getElementById('nav-actions');
   if (!el) return;
@@ -287,7 +287,7 @@ function renderNavActions() {
       <button class="btn btn-primary btn-sm" onclick="openModal('register-modal')">Sign Up</button>`;
   }
 }
-
+ 
 async function doLogin() {
   const email = document.getElementById('login-email').value;
   const password = document.getElementById('login-password').value;
@@ -297,7 +297,7 @@ async function doLogin() {
   closeModal('login-modal'); showToast('Welcome back!');
   if (window.onAuthChange) onAuthChange();
 }
-
+ 
 async function doRegister() {
   const username = document.getElementById('reg-username').value;
   const email = document.getElementById('reg-email').value;
@@ -308,20 +308,20 @@ async function doRegister() {
   closeModal('register-modal'); showToast('Account created! Welcome 🎉');
   if (window.onAuthChange) onAuthChange();
 }
-
+ 
 async function doLogout() {
   await api('/api/logout', 'POST');
   currentUser = null; renderNavActions();
   showToast('Logged out');
   if (window.onAuthChange) onAuthChange();
 }
-
+ 
 // ── Nav highlight ──
 const path = window.location.pathname;
 document.getElementById('nav-home').classList.toggle('active', path === '/');
 document.getElementById('nav-dash').classList.toggle('active', path === '/dashboard');
 document.getElementById('nav-map').classList.toggle('active', path === '/map');
-
+ 
 loadUser();
 </script>
 {% block scripts %}{% endblock %}

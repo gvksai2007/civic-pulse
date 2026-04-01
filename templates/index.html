@@ -318,7 +318,7 @@
         <input type="hidden" id="hs-lat">
         <input type="hidden" id="hs-lng">
       </div>
-      <button class="btn btn-primary" style="width:100%" onclick="submitHomeReport()">
+      <button class="btn btn-primary" style="width:100%" onclick="submitHomeReport(event)">
         <i class="fas fa-paper-plane"></i> Submit Report
       </button>
     </div>
@@ -427,7 +427,7 @@ window.onAuthChange = () => {
   loadHomeReports();
 };
 
-async function submitHomeReport() {
+async function submitHomeReport(event) {
   const title    = document.getElementById('hs-title').value.trim();
   const desc     = document.getElementById('hs-desc').value.trim();
   const category = document.getElementById('hs-category').value;
